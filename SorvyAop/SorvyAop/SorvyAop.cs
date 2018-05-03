@@ -13,6 +13,7 @@ namespace Sorvy
         {
             try
             {
+
                 using (AssemblyDefinition ass = AssemblyDefinition.ReadAssembly(dllFilePath))
                 {
                     foreach (var type in ass.MainModule.Types)
