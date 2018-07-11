@@ -9,33 +9,43 @@ namespace Sorvy
 {
     public class SorvyAop
     {
-        public static void Work(string dllFilePath)
+        public static void Work(string dllFilePath, string outpath)
         {
             try
             {
-
                 using (AssemblyDefinition ass = AssemblyDefinition.ReadAssembly(dllFilePath))
                 {
                     foreach (var type in ass.MainModule.Types)
                     {
+                        if (null != outpath)
+                        {
+                            type.Module.AssemblyResolver.AddSearchDirectory(outpath);
+                        }                        
                         List<MethodDefinition> methods = new List<MethodDefinition>();
-                        List<CustomAttribute> typeatts = type.CustomAttributes.Where(a => a.AttributeType.Resolve().BaseType.Name == "BaseAop").ToList();
+                        List<CustomAttribute> typeatts = type.CustomAttributes.Where(a => CheckAttribute(a.AttributeType)).ToList();
+                        typeatts.ForEach(a=>type.CustomAttributes.Remove(a));
+                        List<PropertyDefinition> properties = new List<PropertyDefinition>();
                         foreach (var method in type.Methods)
                         {
-
-                            IEnumerable<CustomAttribute> methodatts = method.CustomAttributes.Where(a => a.AttributeType.Resolve().BaseType.Name == "BaseAop");
+                            IEnumerable<CustomAttribute> methodatts = method.CustomAttributes.Where(a => CheckAttribute(a.AttributeType));
+                            
                             var newatts = new List<CustomAttribute>();
                             if (method.IsConstructor)
                             {
-                                newatts.AddRange(FilterAttribute(typeatts, AopType.Ctor, false));
+                                var ctor = FilterAttribute(typeatts, AopType.Ctor, false);
+                                newatts.AddRange(ctor);                               
                             }
                             else if (method.IsGetter)
                             {
                                 var getpro = type.Properties.SingleOrDefault(a => a.Name == method.Name.Substring(4));
                                 if (getpro != null)
                                 {
-                                    var getatts = getpro.CustomAttributes.Where(a => a.AttributeType.Resolve().BaseType.Name == "BaseAop");
+                                    var getatts = getpro.CustomAttributes.Where(a => CheckAttribute(a.AttributeType));
                                     newatts.AddRange(FilterAttribute(getatts, AopType.Get, true));
+                                    if (!properties.Contains(getpro))
+                                    {
+                                        properties.Add(getpro);
+                                    }
                                 }
                                 newatts.AddRange(FilterAttribute(typeatts, AopType.Get, false));
                             }
@@ -44,8 +54,12 @@ namespace Sorvy
                                 var setpro = type.Properties.SingleOrDefault(a => a.Name == method.Name.Substring(4));
                                 if (setpro != null)
                                 {
-                                    var setatts = setpro.CustomAttributes.Where(a => a.AttributeType.Resolve().BaseType.Name == "BaseAop");
+                                    var setatts = setpro.CustomAttributes.Where(a => CheckAttribute(a.AttributeType));
                                     newatts.AddRange(FilterAttribute(setatts, AopType.Set, true));
+                                    if (!properties.Contains(setpro))
+                                    {
+                                        properties.Add(setpro);
+                                    }
                                 }
                                 newatts.AddRange(FilterAttribute(typeatts, AopType.Set, false));
                             }
@@ -53,7 +67,11 @@ namespace Sorvy
                             {
                                 newatts.AddRange(FilterAttribute(typeatts, AopType.Method, true));
                             }
+                            properties.ForEach(a=> {
+                                a.CustomAttributes.Where(b => CheckAttribute(b.AttributeType)).ToList().ForEach(c => a.CustomAttributes.Remove(c));
+                            });
                             newatts.AddRange(methodatts);
+                            methodatts.ToList().ForEach(a => method.CustomAttributes.Remove(a));
                             newatts = newatts.OrderBy(a =>
                             {
                                 var op = a.Properties.SingleOrDefault(b => b.Name == "Order");
@@ -73,18 +91,35 @@ namespace Sorvy
                     }
                     ass.Write(dllFilePath + ".temp");
                 }
+                File.Copy(dllFilePath, dllFilePath + ".old", true);
                 File.Delete(dllFilePath);
                 File.Copy(dllFilePath + ".temp", dllFilePath, true);
-                //File.Delete(dllFilePath + ".temp");
+                File.Delete(dllFilePath + ".temp");
             }
-            catch (Exception e) { throw e; }
+            catch (Exception e) { throw new Exception("result:" + e.Message + e.StackTrace); }
+        }
+
+        private static bool CheckAttribute(TypeReference type)
+        {
+            if (type.Name == "BaseAop")
+            {
+                return true;
+            }
+            else if (type.Name == "Attribute")
+            {
+                return false;
+            }
+            else
+            {
+                return CheckAttribute(type.Resolve().BaseType);
+            }
         }
         private static IEnumerable<CustomAttribute> FilterAttribute(IEnumerable<CustomAttribute> attributes, AopType type, bool isDefault)
         {
             return attributes.Where(a =>
             {
                 var op = a.Properties.SingleOrDefault(b => b.Name == "Type");
-                if (op.Name == null)
+                if (null == op.Name )
                 {
                     return isDefault || false;
                 }
@@ -94,9 +129,10 @@ namespace Sorvy
                 return aop == type;
             });
         }
+
         private static MethodDefinition EditMethod(MethodDefinition method, List<CustomAttribute> atts)
         {
-            if (method == null || atts == null || atts.Count == 0)
+            if (null == method  ||null == atts  || atts.Count == 0)
             {
                 return null;
             }
@@ -104,6 +140,7 @@ namespace Sorvy
             ILProcessor il = method.Body.GetILProcessor();
             MethodDefinition newmethod = method.Clone();
             method.Body.Instructions.Clear();
+            atts.ForEach(a => method.CustomAttributes.Remove(a));
             if (!method.IsConstructor)
             {
                 method.Body.Variables.Clear();
@@ -163,11 +200,13 @@ namespace Sorvy
             Dictionary<CustomAttribute, Dictionary<string, Instruction>> excehandler = new Dictionary<CustomAttribute, Dictionary<string, Instruction>>();
             for (int i = 0; i < atts.Count(); i++)
             {
-                var excedic = new Dictionary<string, Instruction>();
-                excedic.Add("TryStart", il.Create(OpCodes.Nop));
-                excedic.Add("TryEnd", il.Create(OpCodes.Stloc_S, exception));
-                excedic.Add("HandlerStart", il.Create(OpCodes.Nop));
-                excedic.Add("HandlerEnd", il.Create(OpCodes.Nop));
+                var excedic = new Dictionary<string, Instruction>
+                {
+                    { "TryStart", il.Create(OpCodes.Nop) },
+                    { "TryEnd", il.Create(OpCodes.Stloc_S, exception) },
+                    { "HandlerStart", il.Create(OpCodes.Nop) },
+                    { "HandlerEnd", il.Create(OpCodes.Nop) }
+                };
                 excehandler.Add(atts[i], excedic);
                 var w = new ExceptionHandler(ExceptionHandlerType.Catch)
                 {
@@ -179,19 +218,24 @@ namespace Sorvy
                 };
                 method.Body.ExceptionHandlers.Add(w);
                 TypeDefinition re = atts[i].AttributeType.Resolve();
-                typeDefinitions.Add(re);
-                var begin = re.Methods.FirstOrDefault(a => a.Name == "Before");
-
+                typeDefinitions.Add(re);            
+                var begin = SearchMethod(re, "Before");
+               
                 var log = new VariableDefinition(method.Module.ImportReference(atts[i].AttributeType));
                 method.Body.Variables.Add(log);
                 variables.Add(log);
                 il.AppendArr(new[] {
                                 il.Create(OpCodes.Newobj, atts[i].Constructor),
                                 il.Create(OpCodes.Stloc_S,log),
+                        });
+                if (begin != null)
+                {
+                    il.AppendArr(new[] {
                                 il.Create(OpCodes.Ldloc_S,log),
                                 il.Create(OpCodes.Ldloc_S,methbase),
                                 il.Create(OpCodes.Call,begin),
                         });
+                }
             }
             for (int i = atts.Count - 1; i >= 0; i--)
             {
@@ -225,8 +269,8 @@ namespace Sorvy
                             });
             }
             for (int i = 0; i < atts.Count(); i++)
-            {
-                var exce = typeDefinitions[i].Methods.Single(a => a.Name == "Exception");
+            {               
+                var exce = SearchMethod(typeDefinitions[i], "Exception");
                 il.AppendArr(new[] {
 
                              il.Create(OpCodes.Leave_S,excehandler[atts[i]]["HandlerEnd"]),
@@ -247,12 +291,16 @@ namespace Sorvy
                             excehandler[atts[i]]["HandlerEnd"],
                         });
 
-                var after = typeDefinitions[i].Methods.Single(a => a.Name == "After");
-                il.AppendArr(new[] {
+                var after = SearchMethod(typeDefinitions[i], "After");
+
+                if (after != null)
+                {
+                    il.AppendArr(new[] {
                             il.Create(OpCodes.Ldloc_S,variables[i]),
                                 il.Create(OpCodes.Ldloc_S,methbase),
                                 il.Create(OpCodes.Call,after),
                         });
+                }
             }
             if (!returnvoid)
             {
@@ -265,11 +313,18 @@ namespace Sorvy
             }
             return newmethod;
         }
+        private static MethodDefinition SearchMethod(TypeDefinition definition, string name)
+        {
+
+            var method = definition.Methods.FirstOrDefault(a => a.Name == name);
+            if (null == method)
+            {
+                return SearchMethod(definition.BaseType.Resolve(), name);
+            }
+            return method;
+        }
     }
-
-
-
-    static class xxxxxxxx
+    static class MonoExtended
     {
         public static void AppendArr(this ILProcessor il, Instruction[] ins)
         {
@@ -280,7 +335,7 @@ namespace Sorvy
         }
         public static MethodReference CreateMethod<T>(this ModuleDefinition module, string methodName, params Type[] types)
         {
-            if (types == null)
+            if (null == types )
             {
                 types = new Type[] { };
             }
@@ -291,13 +346,13 @@ namespace Sorvy
             var newmethod = new MethodDefinition(method.Name + Guid.NewGuid().ToString("N"), method.Attributes, method.ReturnType);
             method.Parameters.ToList().ForEach(a => { newmethod.Parameters.Add(a); });
             method.GenericParameters.ToList().ForEach(a => { newmethod.GenericParameters.Add(a); });
-            method.CustomAttributes.ToList().ForEach(a => { newmethod.CustomAttributes.Add(a); });
+            //method.CustomAttributes.ToList().ForEach(a => { newmethod.CustomAttributes.Add(a); });
             method.Body.Instructions.ToList().ForEach(a => { newmethod.Body.Instructions.Add(a); });
             method.Body.Variables.ToList().ForEach(a => { newmethod.Body.Variables.Add(a); });
             method.Body.ExceptionHandlers.ToList().ForEach(a => { newmethod.Body.ExceptionHandlers.Add(a); });
             newmethod.Body.InitLocals = method.Body.InitLocals;
             newmethod.Body.LocalVarToken = method.Body.LocalVarToken;
-            newmethod.IsPrivate = method.IsPrivate;
+            newmethod.IsPrivate = true;
             newmethod.IsStatic = method.IsStatic;
             return newmethod;
         }
@@ -307,12 +362,10 @@ namespace Sorvy
     {
         public int Order { get; set; }
         public AopType Type { get; set; }
-        public virtual void Before(ExceEventArg method) { }
-        public virtual void After(ExceEventArg method) { }
-        public virtual void Exception(ExceEventArg method)
-        {
-            throw method.exception;
-        }
+        public abstract void Before(ExceEventArg method);
+        public abstract void After(ExceEventArg method);
+        public abstract void Exception(ExceEventArg method);
+        
     }
     /// <summary>
     /// use in class or property, it don't work in method
@@ -355,5 +408,28 @@ namespace Sorvy
         public object returnValue { get; set; }
         private List<object> _parameters = new List<object>();
         public List<object> parameters { get { return _parameters; } set { _parameters = value; } }
+    }
+
+    public class SorvyAopTask : Microsoft.Build.Utilities.Task
+    {
+        public string OutputPath
+        {
+            get; set;
+        }
+        public string TargetPath { get; set; }
+        public override bool Execute()
+        {
+            try
+            {
+                SorvyAop.Work(TargetPath, OutputPath);
+                return true;
+            }
+            catch (Exception e)
+            {
+                Log.LogError("任务出错:" + e.Message);
+                return false;
+            }
+
+        }
     }
 }

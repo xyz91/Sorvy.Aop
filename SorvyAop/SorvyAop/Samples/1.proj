@@ -1,0 +1,9 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!--用来调试task任务的，f5启动调试-->
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">  
+  <UsingTask TaskName="SorvyAopTask" AssemblyFile="C:\Users\john\Source\Repos\Sorvy.Aop\SorvyAop\SorvyAop\bin\Debug\SorvyAop.dll"/>  
+    <Target Name="Example">
+    <SorvyAopTask TargetPath="C:\Users\john\Source\Repos\Sorvy.Aop\SorvyAop\TaskTest\bin\Debug\tasktest.dll" OutputPath="$(OutputPath)"  />   
+    </Target>
+  
+</Project>

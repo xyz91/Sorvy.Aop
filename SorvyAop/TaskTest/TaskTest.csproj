@@ -1,17 +1,16 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{055CB637-579B-4CD6-B380-FA40F88707FE}</ProjectGuid>
+    <ProjectGuid>{0D0EBE6E-3F44-4B1D-B727-C047BCCB607B}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>Sorvy</RootNamespace>
-    <AssemblyName>SorvyAop</AssemblyName>
+    <RootNamespace>TaskTest</RootNamespace>
+    <AssemblyName>TaskTest</AssemblyName>
     <TargetFrameworkVersion>v4.6</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
-    <TargetFrameworkProfile />
-    <BootstrapperEnabled>true</BootstrapperEnabled>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -25,20 +24,17 @@
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>
     <Optimize>true</Optimize>
-    <OutputPath>bin\release\</OutputPath>
+    <OutputPath>bin\Release\</OutputPath>
     <DefineConstants>TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="Microsoft.Build.Framework" />
-    <Reference Include="Mono.Cecil, Version=0.10.0.0, Culture=neutral, processorArchitecture=MSIL">
+    <Reference Include="SorvyAop, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>dll\Mono.Cecil.dll</HintPath>
+      <HintPath>bin\Debug\SorvyAop.dll</HintPath>
     </Reference>
     <Reference Include="System" />
-    <Reference Include="Microsoft.Build.Tasks" />
-    <Reference Include="Microsoft.Build.Utilities" />
     <Reference Include="System.Core" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
@@ -49,20 +45,11 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="SorvyAop.cs" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="Samples\1.proj">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <SubType>Designer</SubType>
-    </None>
-  </ItemGroup>
-  <ItemGroup>
-    <Content Include="dll\Mono.Cecil.dll" />
+    <Compile Include="TaskTest.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
-  <Target Name="BeforeBuild">
-  </Target>
+  <UsingTask TaskName="SorvyAopTask" AssemblyFile="$(OutputPath)sorvyaop.dll" />
   <Target Name="AfterBuild">
+    <SorvyAopTask TargetPath="$(TargetPath)" OutputPath="$(OutputPath)" />
   </Target>
 </Project>
